@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { event } from "@/lib/event";
 import { Countdown } from "./countdown";
 import { useMusic } from "./music";
@@ -25,6 +25,21 @@ export function Invitation() {
   const { scrollYProgress } = useScroll({ target: hero, offset: ["start start", "end start"] });
   const y = useTransform(scrollYProgress, [0, 1], ["0%", "16%"]);
   const { play, controls } = useMusic();
+  useEffect(() => {
+    const startAfterScroll = (event: Event) => {
+      // Ignore tiny movements at the top, and retry after a touch gesture
+      // when the browser requires user activation to allow audio.
+      if (document.hidden || !hero.current || hero.current.getBoundingClientRect().top > -80) return;
+      if (event.target instanceof Element && event.target.closest("button, a")) return;
+      void play(event.type === "scroll" ? "scroll" : "gesture");
+    };
+    window.addEventListener("scroll", startAfterScroll, { passive: true });
+    window.addEventListener("touchend", startAfterScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", startAfterScroll);
+      window.removeEventListener("touchend", startAfterScroll);
+    };
+  }, [play]);
   const discover = () => {
     void play();
     story.current?.focus({ preventScroll: true });
@@ -45,7 +60,12 @@ export function Invitation() {
           <p className="celebrant">{event.name}</p>
           <div className="fine-rule" />
           <p className="hero-date"><time dateTime="2026-12-19">19 <span>·</span> 12 <span>·</span> 2026</time></p>
-          <button onClick={discover} className="discover">Descubrir <span aria-hidden="true">↗</span></button>
+          <button onClick={discover} className="discover">
+            Descubrir
+            <svg className="discover-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="M5 19 19 5M5 5h14v14" />
+            </svg>
+          </button>
           <p className="sound-note">Una experiencia para sentir. Activa el sonido.</p>
         </div>
         <div className="hero-bottom"><span className="eyebrow">Preinvitación · Reserva la fecha</span><a href="#historia" aria-label="Continuar a la historia" className="scroll-mark">↓</a><span className="eyebrow desktop-note">Diciembre / 2026</span></div>

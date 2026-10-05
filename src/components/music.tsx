@@ -6,6 +6,9 @@ export function useMusic() {
   const audio = useRef<HTMLAudioElement>(null);
   const fade = useRef<number | null>(null);
   const request = useRef(0);
+  const autoStartDone = useRef(false);
+  const scrollAttempted = useRef(false);
+  const pending = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState("");
@@ -14,14 +17,20 @@ export function useMusic() {
     fade.current = null;
   }, []);
   const pause = useCallback(() => {
+    autoStartDone.current = true;
+    pending.current = false;
     request.current += 1;
     cancelFade();
     audio.current?.pause();
     setPlaying(false);
   }, [cancelFade]);
-  const play = useCallback(async () => {
+  const play = useCallback(async (source: "manual" | "scroll" | "gesture" = "manual") => {
+    if (source === "manual") autoStartDone.current = true;
+    else if (autoStartDone.current || (source === "scroll" && scrollAttempted.current)) return;
     const player = audio.current;
-    if (!player || !player.paused) return;
+    if (!player || !player.paused || pending.current) return;
+    if (source === "scroll") scrollAttempted.current = true;
+    pending.current = true;
     const id = ++request.current;
     cancelFade();
     player.volume = 0;
@@ -29,6 +38,7 @@ export function useMusic() {
     try {
       await player.play();
       if (request.current !== id) return;
+      autoStartDone.current = true;
       setPlaying(true);
       const start = performance.now();
       const step = (now: number) => {
@@ -37,11 +47,18 @@ export function useMusic() {
         if (progress < 1) fade.current = requestAnimationFrame(step);
       };
       fade.current = requestAnimationFrame(step);
-    } catch {
+    } catch (cause) {
       if (request.current === id) {
         setPlaying(false);
-        setError("No se pudo iniciar la música. Toca reproducir para intentarlo de nuevo.");
+        // A blocked automatic attempt is not a playback error for the guest.
+        // Keep the existing controls available without showing a scroll popup.
+        const autoplayBlocked = cause instanceof DOMException && cause.name === "NotAllowedError";
+        setError(autoplayBlocked && source !== "manual"
+          ? ""
+          : "No se pudo iniciar la música. Toca reproducir para intentarlo de nuevo.");
       }
+    } finally {
+      if (request.current === id) pending.current = false;
     }
   }, [cancelFade]);
   useEffect(() => {
